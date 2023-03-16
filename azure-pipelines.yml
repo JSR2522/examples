@@ -1,0 +1,62 @@
+pool: my-build-pool
+
+pr: none
+trigger: none
+
+schedules:
+- cron: '0 08,18 * * 1,2,3,4,5' # every work day at 8:00 and 18:00
+  displayName: Daily Dev Cluster Stop 
+  branches:
+    include:
+    - dev
+  always: true
+
+parameters:
+  - name: cluster_name
+    default: 
+  - name: cluster_resource_group
+    default: 
+  - name: azure_devops_service_connection_name
+    default:   
+   
+stages:
+- stage: StopStartAKSCluster
+  displayName: Start/Stop AKS Cluster
+  jobs:
+  - job: StopStartAKSCluster
+    displayName: Start/Stop AKS Cluster
+    steps:  
+    - task: AzureCLI@2
+      displayName: Install aks-extension 
+      inputs:
+        azureSubscription: '$'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az extension add --name aks-preview
+    - task: AzureCLI@2
+      displayName: Get current power status of the cluster
+      inputs:
+        azureSubscription: '$'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          powerStatus=`az aks show --resource-group $ --name $ --query agentPoolProfiles[0].powerState.code -o tsv`
+          echo $powerStatus
+          echo "##vso[task.setvariable variable=powerStatus;]$powerStatus"      
+    - task: AzureCLI@2
+      displayName: Power on/off the cluster.
+      inputs:
+        azureSubscription: '$'
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          status=$(powerStatus)
+          if [ $status == "Stopped" ]
+          then
+            echo "Cluster status is $(powerStatus), starting it..."
+            az aks start --resource-group $ --name $ --verbose          
+          else
+            echo "Cluster status is $(powerStatus), going to stop it..."
+            az aks stop --resource-group $ --name $ --verbose
+          fi    
